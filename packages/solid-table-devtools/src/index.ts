@@ -1,17 +1,14 @@
-'use client'
-
-import * as Devtools from './SolidTableDevtools'
+import { isDev } from 'solid-js/web'
 import * as plugin from './plugin'
+import * as Devtools from './TableDevtools'
 
-export const TableDevtoolsPanel =
-  process.env.NODE_ENV !== 'development'
-    ? Devtools.TableDevtoolsPanelNoOp
-    : Devtools.TableDevtoolsPanel
+export const TableDevtoolsPanel = !isDev
+  ? Devtools.TableDevtoolsPanelNoOp
+  : Devtools.TableDevtoolsPanel
 
-export const tableDevtoolsPlugin =
-  process.env.NODE_ENV !== 'development'
-    ? plugin.tableDevtoolsNoOpPlugin
-    : plugin.tableDevtoolsPlugin
+export const tableDevtoolsPlugin = !isDev
+  ? plugin.tableDevtoolsNoOpPlugin
+  : plugin.tableDevtoolsPlugin
 
-export type { TableDevtoolsSolidInit } from './SolidTableDevtools'
+export type { TableDevtoolsSolidInit } from './TableDevtools'
 export type { TableDevtoolsPluginOptions } from './plugin'

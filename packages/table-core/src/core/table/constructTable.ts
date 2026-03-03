@@ -42,16 +42,20 @@ export function constructTable<
     return Object.assign(obj, feature.getDefaultTableOptions?.(table))
   }, {}) as TableOptions<TFeatures, TData>
 
-  table.baseOptionsStore = createStore({
+  table.latestOptions = {
     ...defaultOptions,
     ...tableOptions,
-  })
-
+  }
+  table.optionsStore = createStore(table.latestOptions)
   Object.defineProperty(table, 'options', {
     enumerable: true,
     configurable: true,
     get() {
-      return table.baseOptionsStore.state
+      return table.optionsStore.state
+    },
+    set(value) {
+      table.latestOptions = value
+      table.optionsStore.setState(() => value)
     },
   })
 
@@ -66,6 +70,8 @@ export function constructTable<
     const state = table.baseStore.state
     return {
       ...state,
+      // Merge state with non-reactive options.
+      // NOTE: Adapters should call `table.baseStore.setState` to trigger state updates
       ...(table.options.state ?? {}),
     }
   })

@@ -2,8 +2,8 @@ import {
   Injector,
   assertInInjectionContext,
   computed,
+  effect,
   inject,
-  isSignal,
   signal,
   untracked,
 } from '@angular/core'
@@ -31,6 +31,10 @@ export type AngularTable<
    * The selected state from the table store, based on the selector provided.
    */
   readonly state: Signal<Readonly<TSelected>>
+  /**
+   * A signal that returns the entire table instance. Will update on table/options change.
+   */
+  readonly value: Signal<AngularTable<TFeatures, TData, TSelected>>
   /**
    * Subscribe to changes in the table store with a custom selector.
    */
@@ -107,18 +111,18 @@ export function injectTable<
 ): AngularTable<TFeatures, TData, TSelected> {
   assertInInjectionContext(injectTable)
   const injector = inject(Injector)
-
-  const angularReactivityFeature = constructReactivityFeature({
-    createSignal: (value) => {
-      return signal(value) as any
-    },
-    createMemo: (fn) => {
-      return computed(() => fn())
-    },
-    isSignal: (value) => isSignal(value),
-  })
+  const count = 0
 
   return lazyInit(() => {
+    const stateNotifier = signal(0)
+
+    const angularReactivityFeature = constructReactivityFeature({
+      // optionsNotifier: () => stateNotifier(),
+      stateNotifier: () => {
+        return stateNotifier()
+      },
+    })
+
     const resolvedOptions: TableOptions<TFeatures, TData> = {
       ...options(),
       _features: {
@@ -127,14 +131,17 @@ export function injectTable<
       },
     } as TableOptions<TFeatures, TData>
 
-    const table: AngularTable<TFeatures, TData, TSelected> = constructTable(
-      resolvedOptions,
-    ) as AngularTable<TFeatures, TData, TSelected>
+    const table = constructTable(resolvedOptions) as AngularTable<
+      TFeatures,
+      TData,
+      TSelected
+    >
 
     const updatedOptions = computed<TableOptions<TFeatures, TData>>(() => {
       const tableOptionsValue = options()
+      const currentOptions = table.latestOptions
       const result: TableOptions<TFeatures, TData> = {
-        ...table.options,
+        ...currentOptions,
         ...tableOptionsValue,
         _features: {
           ...tableOptionsValue._features,
@@ -147,25 +154,33 @@ export function injectTable<
       return result
     })
 
-    const tableState = injectStore(
-      table.store,
-      (state: TableState<TFeatures>) => state,
+    effect(
+      () => {
+        const newOptions = updatedOptions()
+        untracked(() => table.setOptions(newOptions))
+      },
       { injector },
     )
 
-    const tableSignalNotifier = computed(
-      () => {
-        tableState()
-        const newOptions = updatedOptions()
-        untracked(() => table.setOptions(newOptions))
-        untracked(() => table.baseStore.setState((prev) => ({ ...prev })))
-        return table
-      },
-      { equal: () => false },
-    )
+    const tableState = injectStore(table.store, (state) => state, { injector })
+    const tableOptions = injectStore(table.optionsStore, (state) => state, {
+      injector,
+    })
 
-    // @ts-ignore
-    table.setTableNotifier(tableSignalNotifier)
+    let firstRun = true
+    effect(
+      () => {
+        tableOptions()
+        tableState()
+        if (!firstRun) {
+          untracked(() => {
+            stateNotifier.update((n) => n + 1)
+          })
+        }
+        firstRun = false
+      },
+      { injector },
+    )
 
     table.Subscribe = function Subscribe<TSubSelected = {}>(props: {
       selector: (state: TableState<TFeatures>) => TSubSelected
@@ -176,9 +191,15 @@ export function injectTable<
         equal: props.equal,
       })
     }
-
     Object.defineProperty(table, 'state', {
       value: injectStore(table.store, selector, { injector }),
+    })
+
+    Object.defineProperty(table, 'value', {
+      value: computed(() => {
+        stateNotifier()
+        return table
+      }),
     })
 
     return table
